@@ -3,10 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="NeuralUX analisa ativação cerebral prevista a partir de screenshots de interface usando CLIP ViT-L/14. Dashboard com visualização 3D e teste A/B.">
+    <meta name="theme-color" content="#05070d">
+    <meta property="og:title" content="NeuralUX — UX Brain Analyzer">
+    <meta property="og:description" content="Analise a ativação cerebral prevista a partir de screenshots de interface.">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' stroke='%235CA9FF' stroke-width='8' fill='none'/><circle cx='50' cy='50' r='16' fill='%235CA9FF'/></svg>">
     <title>NeuralUX — UX Brain Analyzer</title>
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script type="importmap">
     {
         "imports": {
@@ -17,35 +24,54 @@
     </script>
 </head>
 <body>
+    <div class="site-bg" aria-hidden="true">
+        <div class="site-grid"></div>
+        <div class="site-glow glow-a"></div>
+        <div class="site-glow glow-b"></div>
+        <div class="site-glow glow-c"></div>
+    </div>
 
     <!-- HEADER -->
-    <header class="header">
+    <header class="header" role="banner">
         <div class="header-logo">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="#D85A30" stroke-width="2"/>
-                <circle cx="12" cy="12" r="4" fill="#D85A30"/>
-                <line x1="12" y1="2" x2="12" y2="8" stroke="#D85A30" stroke-width="1.5"/>
-                <line x1="12" y1="16" x2="12" y2="22" stroke="#D85A30" stroke-width="1.5"/>
-                <line x1="2" y1="12" x2="8" y2="12" stroke="#D85A30" stroke-width="1.5"/>
-                <line x1="16" y1="12" x2="22" y2="12" stroke="#D85A30" stroke-width="1.5"/>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" stroke="#5CA9FF" stroke-width="2"/>
+                <circle cx="12" cy="12" r="4" fill="#5CA9FF"/>
+                <line x1="12" y1="2" x2="12" y2="8" stroke="#5CA9FF" stroke-width="1.5"/>
+                <line x1="12" y1="16" x2="12" y2="22" stroke="#5CA9FF" stroke-width="1.5"/>
+                <line x1="2" y1="12" x2="8" y2="12" stroke="#5CA9FF" stroke-width="1.5"/>
+                <line x1="16" y1="12" x2="22" y2="12" stroke="#5CA9FF" stroke-width="1.5"/>
             </svg>
             <span>NeuralUX</span>
         </div>
-        <nav class="header-nav">
-            <button class="nav-btn active" data-view="analyze">Analyze</button>
-            <button class="nav-btn" data-view="ab-test">A/B Test</button>
+        <nav class="header-nav" aria-label="Navegação principal">
+            <button class="nav-btn active" data-view="analyze" aria-pressed="true">Analyze</button>
+            <button class="nav-btn" data-view="ab-test" aria-pressed="false">A/B Test</button>
         </nav>
-        <div class="header-status">
-            <span class="status-dot" id="statusDot"></span>
+        <div class="header-status" role="status" aria-live="polite">
+            <span class="status-dot" id="statusDot" aria-hidden="true"></span>
             <span class="status-text" id="statusText">Connecting...</span>
         </div>
     </header>
 
     <!-- MAIN CONTENT -->
-    <main class="main">
+    <main class="main" role="main">
 
         <!-- ==================== SINGLE ANALYSIS VIEW ==================== -->
         <div class="view active" id="viewAnalyze">
+            <section class="analyze-hero">
+                <p class="hero-kicker">Neural Interface Observatory</p>
+                <h1>Visualize predicted brain response to interface design in real time.</h1>
+                <p class="hero-subtitle">
+                    Upload a product screen, inspect neural activation patterns, and compare
+                    UX alternatives with an immersive 3D mapping layer.
+                </p>
+                <div class="hero-pills" aria-label="Capabilities">
+                    <span class="hero-pill">3D Neural Mapping</span>
+                    <span class="hero-pill">A/B Cognitive Delta</span>
+                    <span class="hero-pill">AI UX Report</span>
+                </div>
+            </section>
             <div class="grid-main">
 
                 <!-- Brain Mapping Card -->
@@ -61,9 +87,9 @@
                         </div>
                     </div>
                     <div class="brain-legend">
-                        <span class="legend-item"><span class="legend-color" style="background:#D85A30"></span>High (&ge;65)</span>
-                        <span class="legend-item"><span class="legend-color" style="background:#EF9F27"></span>Medium (40-64)</span>
-                        <span class="legend-item"><span class="legend-color" style="background:#888780"></span>Low (&lt;40)</span>
+                        <span class="legend-item"><span class="legend-color" style="background:#5CA9FF"></span>High (&ge;65)</span>
+                        <span class="legend-item"><span class="legend-color" style="background:#F4B23E"></span>Medium (40-64)</span>
+                        <span class="legend-item"><span class="legend-color" style="background:#6480AB"></span>Low (&lt;40)</span>
                     </div>
                 </div>
 
@@ -72,18 +98,19 @@
                     <div class="card-header">
                         <h2>Upload</h2>
                     </div>
-                    <div class="upload-zone" id="uploadZone">
-                        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-                            <rect x="4" y="4" width="40" height="40" rx="8" stroke="#ccc" stroke-width="2" stroke-dasharray="4 4"/>
-                            <path d="M24 16v16M16 24h16" stroke="#999" stroke-width="2" stroke-linecap="round"/>
+                    <div class="upload-zone" id="uploadZone" role="button" tabindex="0" aria-label="Upload de screenshot ou vídeo">
+                        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+                            <rect x="4" y="4" width="40" height="40" rx="8" stroke="#444" stroke-width="2" stroke-dasharray="4 4"/>
+                            <path d="M24 16v16M16 24h16" stroke="#555" stroke-width="2" stroke-linecap="round"/>
                         </svg>
                         <p>Drag & drop a screenshot or video</p>
                         <span class="upload-hint">.png .jpg .webp .mp4 .mov</span>
-                        <input type="file" id="fileInput" accept=".png,.jpg,.jpeg,.webp,.mp4,.mov" hidden>
+                        <input type="file" id="fileInput" accept=".png,.jpg,.jpeg,.webp,.mp4,.mov" hidden aria-label="Selecionar arquivo">
                     </div>
                     <div class="upload-preview" id="uploadPreview" style="display:none">
-                        <img id="previewImg" alt="Preview">
-                        <button class="btn-clear" id="clearBtn" title="Remove">x</button>
+                        <img id="previewImg" alt="Preview da imagem selecionada">
+                        <video id="previewVideo" playsinline muted loop controls style="display:none"></video>
+                        <button class="btn-clear" id="clearBtn" aria-label="Remover arquivo">×</button>
                     </div>
                     <button class="btn-primary" id="analyzeBtn" disabled>Analyze</button>
 
@@ -112,7 +139,8 @@
                     <h2>AI Analytics Insights</h2>
                     <span class="card-badge" id="reportMeta"></span>
                 </div>
-                <div class="report-content" id="reportContent"></div>
+                <div class="report-nav" id="reportNav"></div>
+                <div class="report-sections" id="reportContent"></div>
             </div>
         </div>
 
@@ -127,17 +155,18 @@
                 <div class="ab-column">
                     <div class="ab-label">Version A</div>
                     <div class="card">
-                        <div class="upload-zone ab-upload" id="uploadZoneA">
-                            <svg width="36" height="36" viewBox="0 0 48 48" fill="none">
-                                <rect x="4" y="4" width="40" height="40" rx="8" stroke="#ccc" stroke-width="2" stroke-dasharray="4 4"/>
-                                <path d="M24 16v16M16 24h16" stroke="#999" stroke-width="2" stroke-linecap="round"/>
+                        <div class="upload-zone ab-upload" id="uploadZoneA" role="button" tabindex="0" aria-label="Upload tela versão A">
+                            <svg width="36" height="36" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+                                <rect x="4" y="4" width="40" height="40" rx="8" stroke="#444" stroke-width="2" stroke-dasharray="4 4"/>
+                                <path d="M24 16v16M16 24h16" stroke="#555" stroke-width="2" stroke-linecap="round"/>
                             </svg>
                             <p>Drop screen A</p>
-                            <input type="file" class="ab-file-input" data-side="a" accept=".png,.jpg,.jpeg,.webp,.mp4,.mov" hidden>
+                            <input type="file" class="ab-file-input" data-side="a" accept=".png,.jpg,.jpeg,.webp,.mp4,.mov" hidden aria-label="Selecionar tela A">
                         </div>
                         <div class="upload-preview ab-preview" id="previewA" style="display:none">
-                            <img class="ab-preview-img" data-side="a" alt="Preview A">
-                            <button class="btn-clear ab-clear" data-side="a">x</button>
+                            <img class="ab-preview-img" data-side="a" alt="Preview da tela A">
+                            <video class="ab-preview-video" data-side="a" playsinline muted loop controls style="display:none"></video>
+                            <button class="btn-clear ab-clear" data-side="a" aria-label="Remover tela A">×</button>
                         </div>
                     </div>
                     <div class="card card-brain ab-brain-card">
@@ -158,17 +187,18 @@
                 <div class="ab-column">
                     <div class="ab-label">Version B</div>
                     <div class="card">
-                        <div class="upload-zone ab-upload" id="uploadZoneB">
-                            <svg width="36" height="36" viewBox="0 0 48 48" fill="none">
-                                <rect x="4" y="4" width="40" height="40" rx="8" stroke="#ccc" stroke-width="2" stroke-dasharray="4 4"/>
-                                <path d="M24 16v16M16 24h16" stroke="#999" stroke-width="2" stroke-linecap="round"/>
+                        <div class="upload-zone ab-upload" id="uploadZoneB" role="button" tabindex="0" aria-label="Upload tela versão B">
+                            <svg width="36" height="36" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+                                <rect x="4" y="4" width="40" height="40" rx="8" stroke="#444" stroke-width="2" stroke-dasharray="4 4"/>
+                                <path d="M24 16v16M16 24h16" stroke="#555" stroke-width="2" stroke-linecap="round"/>
                             </svg>
                             <p>Drop screen B</p>
-                            <input type="file" class="ab-file-input" data-side="b" accept=".png,.jpg,.jpeg,.webp,.mp4,.mov" hidden>
+                            <input type="file" class="ab-file-input" data-side="b" accept=".png,.jpg,.jpeg,.webp,.mp4,.mov" hidden aria-label="Selecionar tela B">
                         </div>
                         <div class="upload-preview ab-preview" id="previewB" style="display:none">
-                            <img class="ab-preview-img" data-side="b" alt="Preview B">
-                            <button class="btn-clear ab-clear" data-side="b">x</button>
+                            <img class="ab-preview-img" data-side="b" alt="Preview da tela B">
+                            <video class="ab-preview-video" data-side="b" playsinline muted loop controls style="display:none"></video>
+                            <button class="btn-clear ab-clear" data-side="b" aria-label="Remover tela B">×</button>
                         </div>
                     </div>
                     <div class="card card-brain ab-brain-card">
@@ -199,8 +229,8 @@
     </main>
 
     <!-- Loading overlay -->
-    <div class="loading-overlay" id="loadingOverlay" style="display:none">
-        <div class="loading-spinner"></div>
+    <div class="loading-overlay" id="loadingOverlay" style="display:none" role="alert" aria-live="assertive" aria-busy="true">
+        <div class="loading-spinner" aria-hidden="true"></div>
         <p id="loadingText">Analyzing brain activation patterns...</p>
     </div>
 

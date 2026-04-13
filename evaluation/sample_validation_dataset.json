@@ -1,0 +1,125 @@
+{
+  "schema_version": "1.0",
+  "description": "Synthetic validation dataset for PRD benchmark smoke tests. All values are invented and exist only to exercise the metric code paths.",
+  "dimensions": [
+    {
+      "dimension": "faces/avatars",
+      "records": [
+        {
+          "creative_id": "ad_001",
+          "runs": [84, 82, 85]
+        },
+        {
+          "creative_id": "ad_002",
+          "runs": [61, 66, 64]
+        },
+        {
+          "creative_id": "ad_003",
+          "runs": [91, 89, 90]
+        }
+      ]
+    },
+    {
+      "dimension": "motion",
+      "records": [
+        {
+          "creative_id": "ad_001",
+          "runs": [73, 70, 71]
+        },
+        {
+          "creative_id": "ad_002",
+          "runs": [58, 60, 61]
+        }
+      ]
+    },
+    {
+      "dimension": "text_labels",
+      "records": [
+        {
+          "creative_id": "ad_001",
+          "runs": [66, 68, 65]
+        },
+        {
+          "creative_id": "ad_002",
+          "runs": [52, 55, 54]
+        }
+      ]
+    }
+  ],
+  "ab_trials": [
+    {
+      "trial_id": "ab_001",
+      "ground_truth_winner": "B",
+      "predicted_winner": "B",
+      "predicted_scores": {
+        "A": 61,
+        "B": 74
+      },
+      "business_metric": "CTR",
+      "observed_delta": 0.12
+    },
+    {
+      "trial_id": "ab_002",
+      "ground_truth_winner": "A",
+      "predicted_winner": "A",
+      "predicted_scores": {
+        "A": 79,
+        "B": 63
+      },
+      "business_metric": "VTR",
+      "observed_delta": 0.08
+    },
+    {
+      "trial_id": "ab_003",
+      "ground_truth_winner": "B",
+      "predicted_winner": "A",
+      "predicted_scores": {
+        "A": 67,
+        "B": 65
+      },
+      "business_metric": "watch_time",
+      "observed_delta": -0.02
+    }
+  ],
+  "logs": [
+    {
+      "stage": "ingest",
+      "latency_ms": 520,
+      "cost_usd": 0.00
+    },
+    {
+      "stage": "extract",
+      "latency_ms": 4380,
+      "cost_usd": 0.07
+    },
+    {
+      "stage": "score",
+      "latency_ms": 2860,
+      "cost_usd": 0.05
+    },
+    {
+      "stage": "explain",
+      "latency_ms": 1520,
+      "cost_usd": 0.03
+    },
+    {
+      "stage": "report",
+      "latency_ms": 740,
+      "cost_usd": 0.01
+    }
+  ],
+  "sanity_checks": [
+    {
+      "name": "no_face_vs_face",
+      "description": "At least one pair should show lower faces/avatars score when the creative has no visible people."
+    },
+    {
+      "name": "high_motion_vs_static",
+      "description": "Motion scores should be higher for creatives with more animated content."
+    },
+    {
+      "name": "high_text_vs_low_text",
+      "description": "Text/labels scores should separate text-heavy creatives from sparse designs."
+    }
+  ]
+}
