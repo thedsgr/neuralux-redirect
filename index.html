@@ -98,6 +98,19 @@
                     <div class="card-header">
                         <h2>Upload</h2>
                     </div>
+                    <div class="context-control">
+                        <label for="contextSelectAnalyze">Contexto cognitivo</label>
+                        <select id="contextSelectAnalyze" class="context-select" aria-label="Selecionar contexto cognitivo">
+                            <option value="generic">Genérico</option>
+                            <option value="banking">Banking / Fintech</option>
+                            <option value="ecommerce">E-commerce</option>
+                            <option value="gaming">Gaming / Entretenimento</option>
+                            <option value="content">Content / News</option>
+                            <option value="saas">SaaS / Produtividade</option>
+                            <option value="social">Social Media</option>
+                            <option value="health">Saúde / Health</option>
+                        </select>
+                    </div>
                     <div class="upload-zone" id="uploadZone" role="button" tabindex="0" aria-label="Upload de screenshot ou vídeo">
                         <svg width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true">
                             <rect x="4" y="4" width="40" height="40" rx="8" stroke="#444" stroke-width="2" stroke-dasharray="4 4"/>
@@ -149,6 +162,19 @@
             <div class="ab-header">
                 <h2>A/B Comparison</h2>
                 <p>Upload two different screens to compare brain activation patterns side by side.</p>
+                <div class="context-control context-control-ab">
+                    <label for="contextSelectAB">Contexto cognitivo</label>
+                    <select id="contextSelectAB" class="context-select" aria-label="Selecionar contexto cognitivo no A/B">
+                        <option value="generic">Genérico</option>
+                        <option value="banking">Banking / Fintech</option>
+                        <option value="ecommerce">E-commerce</option>
+                        <option value="gaming">Gaming / Entretenimento</option>
+                        <option value="content">Content / News</option>
+                        <option value="saas">SaaS / Produtividade</option>
+                        <option value="social">Social Media</option>
+                        <option value="health">Saúde / Health</option>
+                    </select>
+                </div>
             </div>
             <div class="ab-grid">
                 <!-- Version A -->
@@ -172,6 +198,15 @@
                     <div class="card card-brain ab-brain-card">
                         <div class="card-header"><h3>Brain Mapping A</h3><div class="card-badge ab-region-label" data-side="a">--</div></div>
                         <div class="brain-container ab-brain-container" id="brainContainerA">
+                            <div class="spline-layer" aria-hidden="true">
+                                <iframe
+                                    class="spline-frame"
+                                    src="https://app.spline.design/community/file/fb5c9572-898e-4c53-a7ea-fab22311ea46"
+                                    title="Spline background A"
+                                    loading="lazy"
+                                    referrerpolicy="strict-origin-when-cross-origin">
+                                </iframe>
+                            </div>
                             <canvas class="ab-brain-canvas" id="brainCanvasA"></canvas>
                         </div>
                     </div>
@@ -204,6 +239,15 @@
                     <div class="card card-brain ab-brain-card">
                         <div class="card-header"><h3>Brain Mapping B</h3><div class="card-badge ab-region-label" data-side="b">--</div></div>
                         <div class="brain-container ab-brain-container" id="brainContainerB">
+                            <div class="spline-layer" aria-hidden="true">
+                                <iframe
+                                    class="spline-frame"
+                                    src="https://app.spline.design/community/file/fb5c9572-898e-4c53-a7ea-fab22311ea46"
+                                    title="Spline background B"
+                                    loading="lazy"
+                                    referrerpolicy="strict-origin-when-cross-origin">
+                                </iframe>
+                            </div>
                             <canvas class="ab-brain-canvas" id="brainCanvasB"></canvas>
                         </div>
                     </div>

@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // ============================================
 // CONFIG
@@ -10,15 +11,37 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 const GIST_ID = '397ef638ef931f3ace318e891a741312';
 
 const REGIONS = [
-    { key: 'v1',       name: 'Visual primario',      tag: 'V1',    pos: [0, 0.1, -1.15],   desc: 'Primary visual cortex - processes basic visual features' },
-    { key: 'ffa',      name: 'Faces / avatares',     tag: 'FFA',   pos: [-1.05, -0.1, -0.4], desc: 'Fusiform face area - facial recognition and processing' },
-    { key: 'ppa',      name: 'Layouts / cenas',      tag: 'PPA',   pos: [1.05, -0.1, -0.4],  desc: 'Parahippocampal place area - spatial layout perception' },
-    { key: 'v5',       name: 'Movimento / animacao',  tag: 'V5',    pos: [-1.0, 0.3, -0.7],  desc: 'Visual motion area - movement and dynamic elements' },
-    { key: 'ips',      name: 'Atencao visual',       tag: 'IPS',   pos: [0, 0.9, -0.3],     desc: 'Intraparietal sulcus - visual attention and focus' },
-    { key: 'broca',    name: 'Texto / labels',        tag: 'Broca', pos: [-0.9, 0.2, 0.65],  desc: 'Broca area - language and text processing' },
-    { key: 'pfc',      name: 'Decisao / memoria',     tag: 'PFC',   pos: [0, 0.5, 1.05],     desc: 'Prefrontal cortex - decision making and working memory' },
-    { key: 'semantic', name: 'Semantica / contexto',  tag: 'SEM',   pos: [0.9, 0.0, 0.3],    desc: 'Semantic processing - meaning and context understanding' },
+    { key: 'v1',       name: 'Visual primario',      tag: 'V1',    pos: [0, 0.1, -1.15],   desc: 'Cortex visual primario — processa features visuais basicas' },
+    { key: 'ffa',      name: 'Faces / avatares',     tag: 'FFA',   pos: [-1.05, -0.1, -0.4], desc: 'Area fusiforme facial — reconhecimento e processamento de faces' },
+    { key: 'ppa',      name: 'Layouts / cenas',      tag: 'PPA',   pos: [1.05, -0.1, -0.4],  desc: 'Area parahipocampal — percepcao de layout espacial' },
+    { key: 'v5',       name: 'Movimento / animacao',  tag: 'V5',    pos: [-1.0, 0.3, -0.7],  desc: 'Area de movimento visual — elementos dinamicos e animacoes' },
+    { key: 'ips',      name: 'Atencao visual',       tag: 'IPS',   pos: [0, 0.9, -0.3],     desc: 'Sulco intraparietal — atencao e foco visual' },
+    { key: 'broca',    name: 'Texto / labels',        tag: 'Broca', pos: [-0.9, 0.2, 0.65],  desc: 'Area de Broca — processamento de linguagem e texto' },
+    { key: 'pfc',      name: 'Decisao / memoria',     tag: 'PFC',   pos: [0, 0.5, 1.05],     desc: 'Cortex pre-frontal — tomada de decisao e memoria de trabalho' },
+    { key: 'semantic', name: 'Semantica / contexto',  tag: 'SEM',   pos: [0.9, 0.0, 0.3],    desc: 'Processamento semantico — compreensao de significado e contexto' },
 ];
+
+const CONTEXT_LABELS = {
+    generic: 'Genérico',
+    banking: 'Banking / Fintech',
+    ecommerce: 'E-commerce',
+    gaming: 'Gaming / Entretenimento',
+    content: 'Content / News',
+    saas: 'SaaS / Produtividade',
+    social: 'Social Media',
+    health: 'Saúde / Health',
+};
+
+const REGION_ACTIONS = {
+    v1: 'Refine contraste global, espaçamento e hierarquia visual para leitura mais rápida.',
+    ffa: 'Inclua rostos/elementos humanos quando pertinente para elevar conexão emocional.',
+    ppa: 'Reorganize o layout com blocos mais claros e melhor agrupamento de informações.',
+    v5: 'Adicione micro-movimentos intencionais (transições de CTA e feedback de interação).',
+    ips: 'Fortaleça foco visual no elemento principal com contraste e redução de ruído.',
+    broca: 'Simplifique textos, reduza jargão e deixe o CTA mais explícito.',
+    pfc: 'Deixe o caminho de decisão mais curto, com menos ambiguidade e passos.',
+    semantic: 'Reforce contexto com labels e pistas semânticas mais diretas.',
+};
 
 // ============================================
 // STATE
@@ -365,9 +388,242 @@ function getDeltaMeta(delta, sideLabel) {
     };
 }
 
+function normalizeContextKey(rawContext) {
+    const key = String(rawContext || '').trim().toLowerCase();
+    return Object.prototype.hasOwnProperty.call(CONTEXT_LABELS, key) ? key : 'generic';
+}
+
+function getContextLabel(rawContext) {
+    return CONTEXT_LABELS[normalizeContextKey(rawContext)] || CONTEXT_LABELS.generic;
+}
+
+function initContextSelectors() {
+    const analyzeSelect = document.getElementById('contextSelectAnalyze');
+    const abSelect = document.getElementById('contextSelectAB');
+    if (!analyzeSelect && !abSelect) return;
+
+    const syncValue = value => {
+        const normalized = normalizeContextKey(value);
+        if (analyzeSelect && analyzeSelect.value !== normalized) analyzeSelect.value = normalized;
+        if (abSelect && abSelect.value !== normalized) abSelect.value = normalized;
+    };
+
+    if (analyzeSelect) {
+        analyzeSelect.addEventListener('change', () => syncValue(analyzeSelect.value));
+    }
+    if (abSelect) {
+        abSelect.addEventListener('change', () => syncValue(abSelect.value));
+    }
+
+    syncValue(analyzeSelect?.value || abSelect?.value || 'generic');
+}
+
+function getSelectedContextKey() {
+    const analyzeView = document.getElementById('viewAnalyze');
+    const abView = document.getElementById('viewAbTest');
+    const analyzeActive = analyzeView?.classList.contains('active');
+    const abActive = abView?.classList.contains('active');
+    const analyzeSelect = document.getElementById('contextSelectAnalyze');
+    const abSelect = document.getElementById('contextSelectAB');
+
+    if (abActive && abSelect) {
+        return normalizeContextKey(abSelect.value);
+    }
+    if (analyzeActive && analyzeSelect) {
+        return normalizeContextKey(analyzeSelect.value);
+    }
+    return normalizeContextKey(analyzeSelect?.value || abSelect?.value || 'generic');
+}
+
+function getResultUXScore(data) {
+    const fromPayload = Number(data?.ux_score);
+    const baseScore = Number(data?.base_ux_score);
+    const vals = getAllRegionScores(data?.scores || {});
+    const regionalAvg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+    if (Number.isFinite(fromPayload) && fromPayload > 0) return clamp(fromPayload, 0, 100);
+    if (Number.isFinite(baseScore) && baseScore > 0) return clamp(baseScore, 0, 100);
+    if (regionalAvg > 0) return clamp(regionalAvg, 0, 100);
+    return Number.isFinite(fromPayload) ? clamp(fromPayload, 0, 100) : 0;
+}
+
+function formatSignedDelta(value, decimals = 1) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '—';
+    const absValue = Math.abs(numeric);
+    const precision = Number.isInteger(decimals) ? Math.max(0, decimals) : 1;
+    const sign = numeric > 0 ? '+' : numeric < 0 ? '−' : '±';
+    return `${sign}${absValue.toFixed(precision)}`;
+}
+
+function getABComparisonRowState(valA, valB) {
+    const diff = Number(valA) - Number(valB);
+    const absDiff = Math.abs(diff);
+    const status = absDiff < 0.5 ? 'tie' : diff > 0 ? 'a' : 'b';
+    const statusLabel = status === 'a' ? 'A melhor' : status === 'b' ? 'B melhor' : 'Empate';
+    const statusClass = status === 'a' ? 'winner-a status-a' : status === 'b' ? 'winner-b status-b' : 'neutral status-tie';
+    const deltaMeta = getDeltaMeta(diff, status === 'a' ? 'B' : 'A');
+
+    return {
+        diff,
+        absDiff,
+        status,
+        statusLabel,
+        statusClass,
+        deltaMeta,
+    };
+}
+
+function buildABComparisonSnapshot(a, b) {
+    const rows = REGIONS.map((region, index) => {
+        const valA = getScoreForRegion(a?.scores || {}, region.key, index);
+        const valB = getScoreForRegion(b?.scores || {}, region.key, index);
+        return {
+            region,
+            valA,
+            valB,
+            ...getABComparisonRowState(valA, valB),
+        };
+    });
+
+    let aWins = 0;
+    let bWins = 0;
+    let ties = 0;
+    let strongestA = null;
+    let strongestB = null;
+
+    rows.forEach(row => {
+        if (row.status === 'a') {
+            aWins += 1;
+            if (!strongestA || row.diff > strongestA.diff) strongestA = row;
+        } else if (row.status === 'b') {
+            bWins += 1;
+            if (!strongestB || row.diff < strongestB.diff) strongestB = row;
+        } else {
+            ties += 1;
+        }
+    });
+
+    const avgA = getResultUXScore(a);
+    const avgB = getResultUXScore(b);
+    const overallDiff = avgA - avgB;
+    const overallWinner = overallDiff > 0 ? 'a' : overallDiff < 0 ? 'b' : 'tie';
+    const overallLabel = overallWinner === 'a' ? 'A melhor' : overallWinner === 'b' ? 'B melhor' : 'Empate';
+
+    return {
+        rows,
+        aWins,
+        bWins,
+        ties,
+        strongestA,
+        strongestB,
+        avgA,
+        avgB,
+        overallDiff,
+        overallWinner,
+        overallLabel,
+    };
+}
+
+function buildABComparisonSummaryMarkup(snapshot, contextLabel) {
+    const summaryToneClass = snapshot.overallWinner === 'a' ? 'winner-a' : snapshot.overallWinner === 'b' ? 'winner-b' : 'neutral';
+    const winnerText = snapshot.overallWinner === 'tie'
+        ? 'Empate técnico'
+        : snapshot.overallLabel;
+    const winnerDetail = snapshot.overallWinner === 'tie'
+        ? 'As duas versões ficaram muito próximas no score global.'
+        : `Vantagem de ${formatSignedDelta(snapshot.overallDiff, 1)} no score global.`;
+    const strongestA = snapshot.strongestA
+        ? `${snapshot.strongestA.region.tag} · ${snapshot.strongestA.region.name} (${formatSignedDelta(snapshot.strongestA.diff, snapshot.strongestA.absDiff >= 10 ? 0 : 1)})`
+        : 'Sem vantagem clara';
+    const strongestB = snapshot.strongestB
+        ? `${snapshot.strongestB.region.tag} · ${snapshot.strongestB.region.name} (${formatSignedDelta(Math.abs(snapshot.strongestB.diff), snapshot.strongestB.absDiff >= 10 ? 0 : 1)})`
+        : 'Sem vantagem clara';
+
+    return `
+        <div class="ab-comparison-summary">
+            <div class="ab-comparison-summary-head">
+                <div>
+                    <h3>Leitura rápida</h3>
+                    <p class="ab-comparison-summary-lead">${escapeHtml(winnerDetail)}</p>
+                </div>
+                <span class="ab-comparison-summary-context">${escapeHtml(contextLabel)}</span>
+            </div>
+            <div class="ab-comparison-summary-grid">
+                <article class="ab-comparison-summary-card ${summaryToneClass}">
+                    <span class="ab-comparison-summary-label">Visão global</span>
+                    <strong>${escapeHtml(winnerText)}</strong>
+                    <p>A ${snapshot.avgA.toFixed(0)} · B ${snapshot.avgB.toFixed(0)}</p>
+                </article>
+                <article class="ab-comparison-summary-card">
+                    <span class="ab-comparison-summary-label">Ganhos por região</span>
+                    <strong>A ${snapshot.aWins} · B ${snapshot.bWins} · Empates ${snapshot.ties}</strong>
+                    <p>Resumo direto dos vencedores por eixo comparado.</p>
+                </article>
+                <article class="ab-comparison-summary-card">
+                    <span class="ab-comparison-summary-label">Maior ganho de A</span>
+                    <strong>${escapeHtml(strongestA)}</strong>
+                    <p>Maior perda de B nessa linha.</p>
+                </article>
+                <article class="ab-comparison-summary-card">
+                    <span class="ab-comparison-summary-label">Maior ganho de B</span>
+                    <strong>${escapeHtml(strongestB)}</strong>
+                    <p>Maior perda de A nessa linha.</p>
+                </article>
+            </div>
+        </div>
+    `;
+}
+
+function buildABComparisonTableMarkup(snapshot) {
+    return `
+        <div class="ab-comparison-table">
+            <div class="ab-comparison-header" role="row">
+                <span class="ab-comparison-header-cell">Métrica</span>
+                <span class="ab-comparison-header-cell">A</span>
+                <span class="ab-comparison-header-cell">B</span>
+                <span class="ab-comparison-header-cell">Delta</span>
+                <span class="ab-comparison-header-cell">Status</span>
+            </div>
+            ${snapshot.rows.map(row => `
+                <div class="ab-comparison-item ab-comparison-row ${row.statusClass}" data-status="${row.status}" role="row" title="${escapeHtml(row.region.name)} · A ${Number(row.valA).toFixed(0)} vs B ${Number(row.valB).toFixed(0)}">
+                    <div class="ab-comparison-region">
+                        <span class="ab-region-tag">${escapeHtml(row.region.tag)}</span>
+                        <span class="ab-region-name">${escapeHtml(row.region.name)}</span>
+                    </div>
+                    <div class="ab-comparison-value ab-comparison-value-a">${Number(row.valA).toFixed(0)}</div>
+                    <div class="ab-comparison-value ab-comparison-value-b">${Number(row.valB).toFixed(0)}</div>
+                    <div class="ab-comparison-delta ${row.deltaMeta.className}" title="${escapeHtml(row.deltaMeta.title)}">${escapeHtml(row.deltaMeta.text)}</div>
+                    <div class="ab-comparison-status ${row.statusClass}">${escapeHtml(row.statusLabel)}</div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function getABDecision(winnerData, loserData) {
+    const deltas = REGIONS.map((region, index) => {
+        const winnerScore = getScoreForRegion(winnerData?.scores || {}, region.key, index);
+        const loserScore = getScoreForRegion(loserData?.scores || {}, region.key, index);
+        return {
+            key: region.key,
+            name: region.name,
+            tag: region.tag,
+            delta: winnerScore - loserScore,
+            winnerEvidence: getRegionEvidence(winnerData, region.key, index),
+            loserEvidence: getRegionEvidence(loserData, region.key, index),
+        };
+    }).filter(item => item.delta > 0).sort((a, b) => b.delta - a.delta);
+
+    return deltas.slice(0, 3).map(item => ({
+        ...item,
+        action: REGION_ACTIONS[item.key] || 'Ajuste este eixo com foco em clareza e intenção de uso.',
+    }));
+}
+
 function buildMetricCardMarkup({
     name,
     tag,
+    desc,
     value,
     level,
     levelText,
@@ -391,7 +647,7 @@ function buildMetricCardMarkup({
         <div class="metric-head">
             <div>
                 <div class="metric-name">${escapeHtml(name)}</div>
-                <div class="metric-region">${escapeHtml(tag)}</div>
+                <div class="metric-region">${escapeHtml(tag)}${desc ? ` <span class="metric-desc">— ${escapeHtml(desc)}</span>` : ''}</div>
             </div>
             ${deltaMeta ? `<div class="metric-delta${deltaClass}" title="${escapeHtml(deltaMeta.title)}">${escapeHtml(deltaMeta.text)}</div>` : ''}
         </div>
@@ -419,11 +675,40 @@ function setAnalyzeResultMode(enabled) {
     if (analyzeView) analyzeView.classList.toggle('result-mode', Boolean(enabled));
 }
 
+function resetAnalyzeState() {
+    const overlay = document.getElementById('brainOverlay');
+    const label = document.getElementById('brainRegionLabel');
+    const grid = document.getElementById('metricsGrid');
+    const scoreCard = document.getElementById('scoreCard');
+    const reportCard = document.getElementById('reportCard');
+    const reportMeta = document.getElementById('reportMeta');
+    const reportContent = document.getElementById('reportContent');
+
+    setAnalyzeResultMode(false);
+
+    if (overlay) overlay.classList.remove('hidden');
+    if (label) label.textContent = 'Select a region';
+    if (grid) grid.innerHTML = '';
+    if (scoreCard) scoreCard.style.display = 'none';
+    if (reportCard) reportCard.style.display = 'none';
+    if (reportMeta) reportMeta.textContent = '';
+    if (reportContent) reportContent.innerHTML = '';
+
+    document.querySelectorAll('.metric-card').forEach(card => card.classList.remove('active'));
+
+    if (brainScene?.hotspots?.length) {
+        const neutralScores = Object.fromEntries(REGIONS.map(region => [region.key, 0]));
+        brainScene.lastScores = neutralScores;
+        updateBrainActivation(brainScene, neutralScores);
+    }
+}
+
 // ============================================
 // INIT
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
+    initContextSelectors();
     initUpload();
     initABUpload();
     brainScene = createBrainScene('brainCanvas', 'brainContainer');
@@ -530,7 +815,7 @@ function initUpload() {
         preview.style.display = 'none';
         zone.style.display = 'flex';
         analyzeBtn.disabled = true;
-        setAnalyzeResultMode(false);
+        resetAnalyzeState();
     });
 
     analyzeBtn.addEventListener('click', () => runAnalysis());
@@ -541,7 +826,7 @@ function initUpload() {
         currentFile = file;
         zone.style.display = 'none';
         preview.style.display = 'block';
-        setAnalyzeResultMode(false);
+        resetAnalyzeState();
 
         previewUrl = URL.createObjectURL(file);
         if (file.type.startsWith('image/')) {
@@ -645,7 +930,7 @@ function initABUpload() {
 // ============================================
 // API CALL (Gradio v5 SSE protocol)
 // ============================================
-async function callGradioAPI(file) {
+async function callGradioAPI(file, contextKey = 'generic') {
     // 1. Upload file
     const uploadData = new FormData();
     uploadData.append('files', file);
@@ -656,15 +941,34 @@ async function callGradioAPI(file) {
     const uploadJson = await uploadRes.json();
     const filePath = uploadJson[0];
 
-    // 2. Start the call — returns event_id
-    const callRes = await fetch(gradioUrl + '/gradio_api/call/analisar_json', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            data: [{ path: filePath, orig_name: file.name, size: file.size, mime_type: file.type, meta: { _type: 'gradio.FileData' } }],
-        }),
-    });
-    const { event_id } = await callRes.json();
+    const filePayload = { path: filePath, orig_name: file.name, size: file.size, mime_type: file.type, meta: { _type: 'gradio.FileData' } };
+    const normalizedContext = normalizeContextKey(contextKey);
+
+    async function startCall(dataPayload) {
+        const callRes = await fetch(gradioUrl + '/gradio_api/call/analisar_json', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data: dataPayload }),
+        });
+        if (!callRes.ok) {
+            const body = await callRes.text();
+            throw new Error(`Erro ao iniciar chamada da API (${callRes.status}): ${body.slice(0, 280)}`);
+        }
+        const callJson = await callRes.json();
+        if (!callJson?.event_id) {
+            throw new Error('Resposta sem event_id ao iniciar chamada da API.');
+        }
+        return callJson.event_id;
+    }
+
+    // 2. Start the call — tries contextual payload first, then legacy payload.
+    let event_id;
+    try {
+        event_id = await startCall([filePayload, normalizedContext]);
+    } catch (err) {
+        console.warn('Context payload failed, falling back to legacy payload:', err);
+        event_id = await startCall([filePayload]);
+    }
 
     // 3. Stream SSE result
     const resultRes = await fetch(gradioUrl + '/gradio_api/call/analisar_json/' + event_id);
@@ -696,7 +1000,14 @@ async function callGradioAPI(file) {
         throw new Error('Resposta inválida do servidor.');
     }
 
-    return typeof resultData[0] === 'string' ? JSON.parse(resultData[0]) : resultData[0];
+    const parsedResult = typeof resultData[0] === 'string' ? JSON.parse(resultData[0]) : resultData[0];
+    if (!parsedResult.context?.key) {
+        parsedResult.context = {
+            key: normalizedContext,
+            label: getContextLabel(normalizedContext),
+        };
+    }
+    return parsedResult;
 }
 
 // ============================================
@@ -704,9 +1015,10 @@ async function callGradioAPI(file) {
 // ============================================
 async function runAnalysis() {
     if (!currentFile || !gradioUrl) return;
-    showLoading('Analyzing brain activation patterns...');
+    const contextKey = getSelectedContextKey();
+    showLoading(`Analyzing brain activation patterns (${getContextLabel(contextKey)})...`);
     try {
-        const result = await callGradioAPI(currentFile);
+        const result = await callGradioAPI(currentFile, contextKey);
         displayResults(result);
     } catch (err) {
         console.error(err);
@@ -722,6 +1034,7 @@ function displayResults(data) {
     const scores = data.scores;
     const report = data.relatorio;
     const elapsed = data.elapsed;
+    const contextLabel = getContextLabel(data?.context?.key || getSelectedContextKey());
 
     // Hide overlay
     document.getElementById('brainOverlay').classList.add('hidden');
@@ -745,6 +1058,7 @@ function displayResults(data) {
         card.innerHTML = buildMetricCardMarkup({
             name: r.name,
             tag: r.tag,
+            desc: r.desc,
             value: val,
             level,
             levelText,
@@ -762,8 +1076,7 @@ function displayResults(data) {
     });
 
     // UX Score
-    const allVals = getAllRegionScores(scores);
-    const uxScore = (allVals.reduce((a, b) => a + b, 0) / allVals.length).toFixed(0);
+    const uxScore = getResultUXScore(data).toFixed(0);
     document.getElementById('scoreCard').style.display = 'block';
     document.getElementById('scoreValue').textContent = uxScore;
     document.getElementById('scoreBarFill').style.width = uxScore + '%';
@@ -771,7 +1084,7 @@ function displayResults(data) {
     // Report
     if (report) {
         document.getElementById('reportCard').style.display = 'block';
-        document.getElementById('reportMeta').textContent = `${elapsed.toFixed(1)}s inference`;
+        document.getElementById('reportMeta').textContent = `${elapsed.toFixed(1)}s inference · ${contextLabel}`;
         document.getElementById('reportContent').innerHTML = formatReport(report);
     }
 }
@@ -781,16 +1094,16 @@ function displayResults(data) {
 // ============================================
 async function runABAnalysis() {
     if (!abFiles.a || !abFiles.b || !gradioUrl) return;
-    showLoading('Analyzing Version A...');
+    const contextKey = getSelectedContextKey();
+    showLoading(`Analyzing Version A (${getContextLabel(contextKey)})...`);
     try {
-        const resultA = await callGradioAPI(abFiles.a);
+        const resultA = await callGradioAPI(abFiles.a, contextKey);
         abResults.a = resultA;
         displayABResults('a', resultA);
 
-        document.getElementById('loadingText').textContent = 'Analyzing Version B...';
-        const resultB = await callGradioAPI(abFiles.b);
+        document.getElementById('loadingText').textContent = `Analyzing Version B (${getContextLabel(contextKey)})...`;
+        const resultB = await callGradioAPI(abFiles.b, contextKey);
         abResults.b = resultB;
-        displayABResults('a', resultA);
         displayABResults('b', resultB);
 
         displayABComparison(resultA, resultB);
@@ -824,6 +1137,7 @@ function displayABResults(side, data) {
         card.innerHTML = buildMetricCardMarkup({
             name: r.name,
             tag: r.tag,
+            desc: r.desc,
             value: val,
             level,
             levelText: level === 'high' ? 'High' : level === 'medium' ? 'Medium' : 'Low',
@@ -843,8 +1157,7 @@ function displayABResults(side, data) {
     });
 
     // Score
-    const allVals = getAllRegionScores(scores);
-    const uxScore = (allVals.reduce((a, b) => a + b, 0) / allVals.length).toFixed(0);
+    const uxScore = getResultUXScore(data).toFixed(0);
     const scoreCard = document.getElementById(`scoreCard${side.toUpperCase()}`);
     scoreCard.style.display = 'block';
     scoreCard.querySelector('.ab-score-value').textContent = uxScore;
@@ -854,41 +1167,101 @@ function displayABResults(side, data) {
 function displayABComparison(a, b) {
     const card = document.getElementById('abReportCard');
     card.style.display = 'block';
+    const contextLabel = getContextLabel(a?.context?.key || b?.context?.key || getSelectedContextKey());
+    const snapshot = buildABComparisonSnapshot(a, b);
 
     const grid = document.getElementById('abComparisonGrid');
-    grid.innerHTML = '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px"><span style="color:var(--accent);font-weight:600">A</span> vs <span style="color:#63d5ff;font-weight:600">B</span></div><div></div>';
-
-    REGIONS.forEach((r, i) => {
-        const valA = getScoreForRegion(a.scores, r.key, i);
-        const valB = getScoreForRegion(b.scores, r.key, i);
-        const diff = valA - valB;
-        const deltaClass = diff > 0 ? 'positive' : diff < 0 ? 'negative' : 'neutral';
-        const absDiff = Math.abs(diff);
-        const deltaText = diff > 0 ? `+${absDiff.toFixed(absDiff >= 10 ? 0 : 1)}` : diff < 0 ? `−${absDiff.toFixed(absDiff >= 10 ? 0 : 1)}` : '±0';
-        const item = document.createElement('div');
-        item.className = `ab-comparison-item ${deltaClass}`;
-        item.innerHTML = `
-            <span class="region-name">${r.name} (${r.tag})</span>
-            <span class="scores">
-                <span class="score-a">${valA.toFixed(0)}</span>
-                <span class="ab-delta-badge ${deltaClass}" title="Delta A-B">${deltaText}</span>
-                <span class="score-b">${valB.toFixed(0)}</span>
-            </span>
-        `;
-        grid.appendChild(item);
-    });
+    grid.innerHTML = `
+        ${buildABComparisonSummaryMarkup(snapshot, contextLabel)}
+        ${buildABComparisonTableMarkup(snapshot)}
+    `;
 
     // Overall comparison
-    const valsA = getAllRegionScores(a.scores);
-    const valsB = getAllRegionScores(b.scores);
-    const avgA = valsA.reduce((x, y) => x + y, 0) / valsA.length;
-    const avgB = valsB.reduce((x, y) => x + y, 0) / valsB.length;
+    const avgA = snapshot.avgA;
+    const avgB = snapshot.avgB;
+    const winner = snapshot.overallWinner === 'a' ? 'A' : snapshot.overallWinner === 'b' ? 'B' : 'Empate';
+    const diff = snapshot.overallDiff;
+    const absDiff = Math.abs(diff);
+    const confidence = Math.round(clamp(Math.abs(avgA - avgB) * 4.2, 22, 95));
+    const winnerData = winner === 'A' ? a : b;
+    const loserData = winner === 'A' ? b : a;
+    const decisions = winner === 'Empate' ? [] : getABDecision(winnerData, loserData);
+    const overallToneClass = winner === 'A' ? 'winner-a' : winner === 'B' ? 'winner-b' : 'neutral';
+    const deltaClass = diff > 0 ? 'positive' : diff < 0 ? 'negative' : 'neutral';
+    const deltaText = diff === 0 ? 'Δ 0.0' : `Δ ${diff > 0 ? '+' : '−'}${absDiff.toFixed(1)}`;
+    const overallNarrative =
+        winner === 'A'
+            ? 'Version A shows stronger overall brain engagement for this context.'
+            : winner === 'B'
+                ? 'Version B shows stronger overall brain engagement for this context.'
+                : 'Both versions show similar overall brain engagement.';
+
+    const decisionMarkup = winner === 'Empate'
+        ? `
+            <div class="ab-decision-card neutral">
+                <h3>Decisão sugerida</h3>
+                <p>As versões estão tecnicamente empatadas no contexto <strong>${contextLabel}</strong>. Priorize teste com tráfego real.</p>
+            </div>
+        `
+        : `
+            <div class="ab-decision-card ${winner === 'A' ? 'winner-a' : 'winner-b'}">
+                <div class="ab-decision-head">
+                    <h3>Decisão sugerida: versão ${winner}</h3>
+                    <span class="ab-decision-confidence">Confiança ${confidence}%</span>
+                </div>
+                <p class="ab-decision-summary">
+                    No contexto <strong>${contextLabel}</strong>, a versão ${winner} apresentou melhor score global
+                    (${Math.max(avgA, avgB).toFixed(0)}/100) com ganho de ${(Math.abs(avgA - avgB)).toFixed(1)} pontos.
+                </p>
+                <div class="ab-decision-actions">
+                    ${decisions.map(item => `
+                        <div class="ab-decision-action">
+                            <div class="ab-decision-action-title">${item.tag} · +${item.delta.toFixed(item.delta >= 10 ? 0 : 1)} pts</div>
+                            <p>${item.action}</p>
+                            <small>Evidência: ${escapeHtml(item.winnerEvidence || item.loserEvidence || 'sem evidência adicional')}</small>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+
+    const overallMarkup = `
+        <section class="overall-comparison-card ${overallToneClass}">
+            <div class="overall-comparison-head">
+                <h2>Overall Comparison</h2>
+                <span class="overall-context">Context: ${contextLabel}</span>
+            </div>
+            <div class="overall-score-grid">
+                <div class="overall-score-card ${winner === 'A' ? 'winner' : ''}">
+                    <div class="overall-score-label">Version A</div>
+                    <div class="overall-score-value">${avgA.toFixed(0)}<span>/100</span></div>
+                </div>
+                <div class="overall-delta ${deltaClass}" title="Diferença de score A-B">${deltaText}</div>
+                <div class="overall-score-card ${winner === 'B' ? 'winner' : ''}">
+                    <div class="overall-score-label">Version B</div>
+                    <div class="overall-score-value">${avgB.toFixed(0)}<span>/100</span></div>
+                </div>
+            </div>
+            <div class="overall-bars">
+                <div class="overall-bar-row">
+                    <span class="overall-bar-label">A</span>
+                    <div class="overall-bar-track"><div class="overall-bar-fill version-a" style="width:${avgA.toFixed(1)}%"></div></div>
+                    <span class="overall-bar-num">${avgA.toFixed(0)}</span>
+                </div>
+                <div class="overall-bar-row">
+                    <span class="overall-bar-label">B</span>
+                    <div class="overall-bar-track"><div class="overall-bar-fill version-b" style="width:${avgB.toFixed(1)}%"></div></div>
+                    <span class="overall-bar-num">${avgB.toFixed(0)}</span>
+                </div>
+            </div>
+            <p class="overall-insight">${overallNarrative}</p>
+        </section>
+    `;
+
     const reportEl = document.getElementById('abReportContent');
     reportEl.innerHTML = `
-        <h2>Overall Comparison</h2>
-        <p><strong>Version A:</strong> UX Score ${avgA.toFixed(0)}/100</p>
-        <p><strong>Version B:</strong> UX Score ${avgB.toFixed(0)}/100</p>
-        <p>${avgA > avgB ? 'Version A shows stronger overall brain engagement, suggesting a more effective UX design.' : avgB > avgA ? 'Version B shows stronger overall brain engagement, suggesting a more effective UX design.' : 'Both versions show similar brain engagement levels.'}</p>
+        ${decisionMarkup}
+        ${overallMarkup}
         ${a.relatorio ? '<h2>Report A</h2>' + formatReport(a.relatorio) : ''}
         ${b.relatorio ? '<h2>Report B</h2>' + formatReport(b.relatorio) : ''}
     `;
@@ -969,35 +1342,76 @@ function createBrainScene(canvasId, containerId) {
     const brainGroup = new THREE.Group();
     scene.add(brainGroup);
 
-    // Hemispheres
-    const brainMaterial = new THREE.MeshPhysicalMaterial({
-        color: 0xaeb8cd,
-        transparent: true,
-        opacity: 0.82,
-        roughness: 0.62,
-        metalness: 0.0,
-        clearcoat: 0.34,
-        clearcoatRoughness: 0.22,
-        side: THREE.FrontSide,
-    });
-
-    const leftHemi = createHemisphere(-1);
-    leftHemi.material = brainMaterial.clone();
+    // Placeholder hemispheres (replaced when GLB loads)
+    let leftHemi = new THREE.Mesh(new THREE.SphereGeometry(0.01), new THREE.MeshBasicMaterial({ visible: false }));
+    let rightHemi = leftHemi.clone();
     brainGroup.add(leftHemi);
-
-    const rightHemi = createHemisphere(1);
-    rightHemi.material = brainMaterial.clone();
     brainGroup.add(rightHemi);
 
-    // Subtle sulci darkening via wireframe
-    const wireMatL = new THREE.MeshBasicMaterial({ color: 0x85a8e0, wireframe: true, transparent: true, opacity: 0.045 });
-    const wireL = new THREE.Mesh(leftHemi.geometry.clone(), wireMatL);
-    wireL.position.copy(leftHemi.position);
-    brainGroup.add(wireL);
+    // Store brain meshes for region vertex coloring
+    const brainMeshes = [];
 
-    const wireR = new THREE.Mesh(rightHemi.geometry.clone(), wireMatL.clone());
-    wireR.position.copy(rightHemi.position);
-    brainGroup.add(wireR);
+    // Load GLB brain model
+    const gltfLoader = new GLTFLoader();
+    gltfLoader.load('assets/brain.glb', (gltf) => {
+        const model = gltf.scene;
+
+        // Compute bounding box to center and scale the model
+        const box = new THREE.Box3().setFromObject(model);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const scale = 2.2 / maxDim; // fit to ~2.2 units
+
+        model.position.sub(center);
+        model.scale.setScalar(scale);
+        model.position.y += 0.1; // slight upward offset
+
+        // Process each mesh in the model
+        model.traverse((child) => {
+            if (child.isMesh) {
+                brainMeshes.push(child);
+
+                // Apply translucent brain material preserving original textures
+                const origMap = child.material.map;
+                const origNormal = child.material.normalMap;
+                child.material = new THREE.MeshPhysicalMaterial({
+                    map: origMap,
+                    normalMap: origNormal,
+                    color: 0x8aacd4,
+                    transparent: true,
+                    opacity: 0.85,
+                    roughness: 0.55,
+                    metalness: 0.05,
+                    clearcoat: 0.4,
+                    clearcoatRoughness: 0.2,
+                    side: THREE.FrontSide,
+                    vertexColors: true,
+                });
+
+                // Initialize vertex colors (neutral blue-gray)
+                const geo = child.geometry;
+                const count = geo.attributes.position.count;
+                const colors = new Float32Array(count * 3);
+                const baseColor = new THREE.Color(0x8aacd4);
+                for (let i = 0; i < count; i++) {
+                    colors[i * 3] = baseColor.r;
+                    colors[i * 3 + 1] = baseColor.g;
+                    colors[i * 3 + 2] = baseColor.b;
+                }
+                geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            }
+        });
+
+        brainGroup.add(model);
+        sceneData.brainMeshes = brainMeshes;
+        sceneData.brainModel = model;
+
+        // If scores were already set before model loaded, apply them
+        if (sceneData.lastScores) {
+            updateBrainActivation(sceneData, sceneData.lastScores);
+        }
+    });
 
     // Region hotspots
     const hotspots = [];
@@ -1273,6 +1687,8 @@ function createBrainScene(canvasId, containerId) {
         rightHemi,
         connectionLines,
         particles,
+        brainMeshes,
+        brainModel: null,
     };
     return sceneData;
 }
@@ -1378,9 +1794,93 @@ function updateBrainActivation(sceneData, scores) {
         }
     });
 
-    // Make brain shell semi-transparent when activated so hotspots are visible inside
+    // Paint brain model vertices by proximity to activated regions
+    if (sceneData.brainMeshes && sceneData.brainMeshes.length > 0) {
+        const baseColor = new THREE.Color(0x8aacd4);
+        const regionPositions = REGIONS.map(r => new THREE.Vector3(...r.pos));
+        const regionActivations = REGIONS.map((r, i) => {
+            const val = getScoreForRegion(scores, r.key, i);
+            return val / 100;
+        });
+        const regionColors = REGIONS.map((r, i) => {
+            const val = getScoreForRegion(scores, r.key, i);
+            if (val >= 65) {
+                const t = (val - 65) / 35;
+                return new THREE.Color().lerpColors(new THREE.Color(0x5ca9ff), new THREE.Color(0x63d5ff), t);
+            } else if (val >= 40) {
+                const t = (val - 40) / 25;
+                return new THREE.Color().lerpColors(new THREE.Color(0xf4b23e), new THREE.Color(0x5ca9ff), t);
+            } else {
+                const t = val / 40;
+                return new THREE.Color().lerpColors(new THREE.Color(0x5a7094), new THREE.Color(0xf4b23e), t);
+            }
+        });
+
+        const influenceRadius = 1.2; // how far each region's glow extends
+        const vertexPos = new THREE.Vector3();
+
+        sceneData.brainMeshes.forEach(mesh => {
+            const geo = mesh.geometry;
+            const positions = geo.attributes.position;
+            const colors = geo.attributes.color;
+            if (!colors) return;
+
+            // Get world matrix to transform vertices
+            mesh.updateWorldMatrix(true, false);
+            const worldMatrix = mesh.matrixWorld;
+
+            for (let v = 0; v < positions.count; v++) {
+                vertexPos.set(positions.getX(v), positions.getY(v), positions.getZ(v));
+                vertexPos.applyMatrix4(worldMatrix);
+
+                // Accumulate color influence from all regions
+                let totalWeight = 0;
+                const blended = new THREE.Color(0, 0, 0);
+
+                for (let ri = 0; ri < regionPositions.length; ri++) {
+                    const dist = vertexPos.distanceTo(regionPositions[ri]);
+                    if (dist < influenceRadius && regionActivations[ri] > 0.05) {
+                        const falloff = 1 - (dist / influenceRadius);
+                        const weight = falloff * falloff * regionActivations[ri];
+                        blended.r += regionColors[ri].r * weight;
+                        blended.g += regionColors[ri].g * weight;
+                        blended.b += regionColors[ri].b * weight;
+                        totalWeight += weight;
+                    }
+                }
+
+                if (totalWeight > 0) {
+                    // Blend between base color and activated color
+                    const intensity = Math.min(totalWeight, 1);
+                    blended.r /= totalWeight;
+                    blended.g /= totalWeight;
+                    blended.b /= totalWeight;
+                    colors.setXYZ(v,
+                        baseColor.r * (1 - intensity) + blended.r * intensity,
+                        baseColor.g * (1 - intensity) + blended.g * intensity,
+                        baseColor.b * (1 - intensity) + blended.b * intensity
+                    );
+                } else {
+                    colors.setXYZ(v, baseColor.r, baseColor.g, baseColor.b);
+                }
+            }
+            colors.needsUpdate = true;
+        });
+    }
+
+    // Make brain shell semi-transparent when activated
     const allVals = getAllRegionScores(scores);
     const avgActivation = (allVals.reduce((a, b) => a + b, 0) / allVals.length) / 100;
+
+    // Adjust GLB model opacity based on activation
+    if (sceneData.brainMeshes) {
+        sceneData.brainMeshes.forEach(mesh => {
+            mesh.material.opacity = 0.85 - avgActivation * 0.15;
+            mesh.material.emissive = new THREE.Color(0x2a4a7a);
+            mesh.material.emissiveIntensity = avgActivation * 0.4;
+        });
+    }
+
     sceneData.leftHemi.material.transparent = true;
     sceneData.rightHemi.material.transparent = true;
     const shellOpacity = 0.75 - avgActivation * 0.2;
