@@ -32,6 +32,7 @@ from typing import Any
 try:
     from .contracts import (
         API_VERSION,
+        DEFAULT_CONTEXT,
         REGIONS,
         REGION_DESCRIPTIONS,
         REGION_LABELS,
@@ -39,12 +40,17 @@ try:
         blank_confidence_map,
         blank_evidence_map,
         blank_region_scores,
+        context_block,
+        context_label,
         feature_template,
+        get_context_weights,
+        normalize_context_key,
         output_template,
     )
 except ImportError:  # pragma: no cover - direct script execution fallback
     from contracts import (  # type: ignore
         API_VERSION,
+        DEFAULT_CONTEXT,
         REGIONS,
         REGION_DESCRIPTIONS,
         REGION_LABELS,
@@ -52,7 +58,11 @@ except ImportError:  # pragma: no cover - direct script execution fallback
         blank_confidence_map,
         blank_evidence_map,
         blank_region_scores,
+        context_block,
+        context_label,
         feature_template,
+        get_context_weights,
+        normalize_context_key,
         output_template,
     )
 
@@ -914,10 +924,11 @@ def _merge_feature_maps(*parts: dict) -> dict:
     return merged
 
 
-def compute_dimension_scores(features: dict) -> dict:
+def compute_dimension_scores(features: dict, context: str | None = None) -> dict:
     visual = features.get("visual", {}) or {}
     audio = features.get("audio", {}) or {}
     text = features.get("text", {}) or {}
+    context_weights = get_context_weights(context if context is not None else DEFAULT_CONTEXT)
 
     visual_detail = _clamp(
         _safe_float(visual.get("contrast")) * 0.3
@@ -1004,18 +1015,25 @@ def compute_dimension_scores(features: dict) -> dict:
 
     confidence["ppa"] = _clamp(0.38 + layout_signal * 0.32 + (1.0 - abs(_safe_float(visual.get("aspect_ratio"), 1.0) - 1.0) / 2.0) * 0.1, 0.0, 1.0)
 
-    total_weight = 0.0
-    weighted_sum = 0.0
+    base_total_weight = 0.0
+    base_weighted_sum = 0.0
+    ctx_total_weight = 0.0
+    ctx_weighted_sum = 0.0
     for region, score in scores.items():
-        weight = confidence.get(region, 0.0) + 0.2
-        weighted_sum += score * weight
-        total_weight += weight
-    ux_score = _round_score(weighted_sum / total_weight if total_weight else 0.0)
+        conf_weight = confidence.get(region, 0.0) + 0.2
+        base_weighted_sum += score * conf_weight
+        base_total_weight += conf_weight
+        ctx_weight = context_weights.get(region, 1.0) * conf_weight
+        ctx_weighted_sum += score * ctx_weight
+        ctx_total_weight += ctx_weight
+    base_ux_score = _round_score(base_weighted_sum / base_total_weight if base_total_weight else 0.0)
+    ux_score = _round_score(ctx_weighted_sum / ctx_total_weight if ctx_total_weight else 0.0)
 
     return {
         "scores": scores,
         "confidence_by_region": confidence,
         "ux_score": ux_score,
+        "base_ux_score": base_ux_score,
     }
 
 
@@ -1132,21 +1150,36 @@ def _compose_report(result: dict) -> str:
     strongest_txt = ", ".join(f"{region.upper()} {score}" for region, score in strongest)
     weakest_txt = ", ".join(f"{region.upper()} {score}" for region, score in weakest)
     mean_conf = statistics.fmean(confidence.values()) if confidence else 0.0
+    ctx = result.get("context", {}) or {}
+    ctx_key = ctx.get("key", DEFAULT_CONTEXT)
+    ctx_label = ctx.get("label", context_label(ctx_key))
+    ux_score = result.get("ux_score", 0)
+    base_ux_score = result.get("base_ux_score", ux_score)
+    context_line = (
+        f"Context: {ctx_label}. UX score: {ux_score} (base {base_ux_score})."
+        if ctx_key != DEFAULT_CONTEXT
+        else f"Context: {ctx_label}. UX score: {ux_score}."
+    )
     return (
         f"NeuroScore v2 (lightweight) analyzed the media with average confidence {mean_conf:.2f}. "
         f"Strongest regions: {strongest_txt}. "
         f"Weakest regions: {weakest_txt}. "
-        f"UX score: {result.get('ux_score', 0)}."
+        f"{context_line}"
     )
 
 
-def analyze_media(media_path: str, transcript: str | None = None) -> dict:
+def analyze_media(
+    media_path: str,
+    transcript: str | None = None,
+    context: str | None = None,
+) -> dict:
     start = time.perf_counter()
+    context_key = normalize_context_key(context)
     visual_features = extract_visual_features(media_path)
     audio_features = extract_audio_features(media_path)
     text_features = extract_text_features(transcript)
     features = _merge_feature_maps(visual_features, {"audio": audio_features, "text": text_features})
-    score_bundle = compute_dimension_scores(features)
+    score_bundle = compute_dimension_scores(features, context=context_key)
     evidence = build_evidence(features, score_bundle)
 
     result = output_template()
@@ -1155,6 +1188,8 @@ def analyze_media(media_path: str, transcript: str | None = None) -> dict:
     result["confidence_by_region"] = score_bundle["confidence_by_region"]
     result["evidence_by_region"] = evidence
     result["ux_score"] = score_bundle["ux_score"]
+    result["base_ux_score"] = score_bundle["base_ux_score"]
+    result["context"] = context_block(context_key)
     result["elapsed"] = round(time.perf_counter() - start, 4)
     result["relatorio"] = _compose_report(result)
     result["features"] = features
@@ -1170,10 +1205,15 @@ def _cli() -> int:
     parser = argparse.ArgumentParser(description="Run the lightweight NeuroScore v2 pipeline.")
     parser.add_argument("media_path", help="Path to an image, video, or audio file.")
     parser.add_argument("--transcript", default=None, help="Optional transcript or OCR text.")
+    parser.add_argument(
+        "--context",
+        default=DEFAULT_CONTEXT,
+        help="Cognitive context: banking, ecommerce, gaming, content, saas, social, health, generic.",
+    )
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
     args = parser.parse_args()
 
-    output = analyze_media(args.media_path, transcript=args.transcript)
+    output = analyze_media(args.media_path, transcript=args.transcript, context=args.context)
     print(json.dumps(output, ensure_ascii=False, indent=2 if args.pretty else None))
     return 0
 
