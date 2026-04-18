@@ -33,14 +33,14 @@ const CONTEXT_LABELS = {
 };
 
 const REGION_ACTIONS = {
-    v1: 'Refine contraste global, espaçamento e hierarquia visual para leitura mais rápida.',
-    ffa: 'Inclua rostos/elementos humanos quando pertinente para elevar conexão emocional.',
-    ppa: 'Reorganize o layout com blocos mais claros e melhor agrupamento de informações.',
-    v5: 'Adicione micro-movimentos intencionais (transições de CTA e feedback de interação).',
-    ips: 'Fortaleça foco visual no elemento principal com contraste e redução de ruído.',
-    broca: 'Simplifique textos, reduza jargão e deixe o CTA mais explícito.',
-    pfc: 'Deixe o caminho de decisão mais curto, com menos ambiguidade e passos.',
-    semantic: 'Reforce contexto com labels e pistas semânticas mais diretas.',
+    v1: 'Aumente o contraste global e reduza o ruído visual do perdedor para igualar a clareza do vencedor.',
+    ffa: 'Adicione rostos/elementos humanos no perdedor — o vencedor capturou mais conexão facial.',
+    ppa: 'Reorganize o layout do perdedor em blocos mais definidos; o vencedor tem agrupamento mais legível.',
+    v5: 'Insira micro-movimentos intencionais no perdedor (transições de CTA, feedback) para alcançar o V5 do vencedor.',
+    ips: 'Fortaleça o foco no elemento principal do perdedor; o vencedor direciona melhor a atenção visual.',
+    broca: 'Simplifique os textos e torne o CTA mais explícito no perdedor; o vencedor tem linguagem mais direta.',
+    pfc: 'Reduza passos e ambiguidade no caminho de decisão do perdedor — o vencedor converte com menos fricção.',
+    semantic: 'Reforce labels e pistas de contexto no perdedor; o vencedor comunica o propósito com mais clareza.',
 };
 
 // ============================================
@@ -345,13 +345,58 @@ function getRegionConfidence(data, regionKey, fallbackIndex) {
     return normalizeConfidenceValue(raw);
 }
 
-function getRegionEvidence(data, regionKey, fallbackIndex) {
-    const raw = getIndexedRegionValue(
+function getRegionEvidenceRaw(data, regionKey, fallbackIndex) {
+    return getIndexedRegionValue(
         data?.evidence_by_region ?? data?.evidenceByRegion ?? data?.evidence ?? data?.evidenceByRegion,
         regionKey,
         fallbackIndex
     );
-    return normalizeEvidenceValue(raw);
+}
+
+function getRegionEvidence(data, regionKey, fallbackIndex) {
+    return normalizeEvidenceValue(getRegionEvidenceRaw(data, regionKey, fallbackIndex));
+}
+
+function normalizeEvidenceSignal(signal) {
+    if (!signal || typeof signal !== 'object') return null;
+    const name = typeof signal.name === 'string' ? signal.name.trim() : '';
+    if (!name) return null;
+    const value = Number(signal.value);
+    const weight = Number(signal.weight);
+    const direction = typeof signal.direction === 'string' ? signal.direction.toLowerCase() : null;
+    return {
+        name,
+        value: Number.isFinite(value) ? value : null,
+        weight: Number.isFinite(weight) ? weight : null,
+        direction: direction === 'positive' || direction === 'negative' ? direction : null,
+    };
+}
+
+function getRegionEvidenceDetails(data, regionKey, fallbackIndex) {
+    const raw = getRegionEvidenceRaw(data, regionKey, fallbackIndex);
+    const compact = normalizeEvidenceValue(raw);
+    const details = {
+        summary: null,
+        compact,
+        primarySignals: [],
+        supportingSignals: [],
+        hasDetails: false,
+    };
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        if (typeof raw.summary === 'string' && raw.summary.trim()) {
+            details.summary = raw.summary.trim();
+        }
+        if (Array.isArray(raw.primary_signals)) {
+            details.primarySignals = raw.primary_signals.map(normalizeEvidenceSignal).filter(Boolean);
+        }
+        if (Array.isArray(raw.supporting_signals)) {
+            details.supportingSignals = raw.supporting_signals.map(normalizeEvidenceSignal).filter(Boolean);
+        }
+    }
+    details.hasDetails = Boolean(
+        details.summary || details.primarySignals.length || details.supportingSignals.length
+    );
+    return details;
 }
 
 function getConfidenceBadgeText(confidence) {
@@ -600,24 +645,173 @@ function buildABComparisonTableMarkup(snapshot) {
     `;
 }
 
-function getABDecision(winnerData, loserData) {
-    const deltas = REGIONS.map((region, index) => {
+function getContextWeightMap(data) {
+    const weights = data?.context?.weights;
+    if (!weights || typeof weights !== 'object') {
+        return Object.fromEntries(REGIONS.map(r => [r.key, 1.0]));
+    }
+    const out = {};
+    REGIONS.forEach(r => {
+        const w = Number(weights[r.key]);
+        out[r.key] = Number.isFinite(w) ? w : 1.0;
+    });
+    return out;
+}
+
+function pickTopSignalForRegion(data, regionKey, fallbackIndex) {
+    const details = getRegionEvidenceDetails(data, regionKey, fallbackIndex);
+    const candidates = details.primarySignals.length ? details.primarySignals : details.supportingSignals;
+    if (!candidates.length) return null;
+    return candidates.reduce((best, s) => (best == null || (s.weight || 0) > (best.weight || 0) ? s : best), null);
+}
+
+function getABDecision(winnerData, loserData, contextWeights) {
+    const weights = contextWeights || getContextWeightMap(winnerData) || getContextWeightMap(loserData);
+    const ranked = REGIONS.map((region, index) => {
         const winnerScore = getScoreForRegion(winnerData?.scores || {}, region.key, index);
         const loserScore = getScoreForRegion(loserData?.scores || {}, region.key, index);
+        const delta = winnerScore - loserScore;
+        const ctxWeight = weights[region.key] ?? 1.0;
+        const winnerSignal = pickTopSignalForRegion(winnerData, region.key, index);
+        const loserSignal = pickTopSignalForRegion(loserData, region.key, index);
+        const pairedSignal = winnerSignal && loserSignal && winnerSignal.name === loserSignal.name
+            ? { name: winnerSignal.name, winnerValue: winnerSignal.value, loserValue: loserSignal.value, direction: winnerSignal.direction }
+            : winnerSignal
+                ? { name: winnerSignal.name, winnerValue: winnerSignal.value, loserValue: null, direction: winnerSignal.direction }
+                : null;
         return {
             key: region.key,
             name: region.name,
             tag: region.tag,
-            delta: winnerScore - loserScore,
-            winnerEvidence: getRegionEvidence(winnerData, region.key, index),
-            loserEvidence: getRegionEvidence(loserData, region.key, index),
+            delta,
+            relativeGain: loserScore > 0 ? (delta / loserScore) * 100 : null,
+            winnerScore,
+            loserScore,
+            contextWeight: ctxWeight,
+            priority: Math.max(delta, 0) * ctxWeight,
+            pairedSignal,
+            winnerEvidenceSummary: getRegionEvidenceDetails(winnerData, region.key, index).summary,
+            action: REGION_ACTIONS[region.key] || 'Ajuste este eixo do perdedor com foco em clareza e intenção de uso.',
         };
-    }).filter(item => item.delta > 0).sort((a, b) => b.delta - a.delta);
+    });
 
-    return deltas.slice(0, 3).map(item => ({
-        ...item,
-        action: REGION_ACTIONS[item.key] || 'Ajuste este eixo com foco em clareza e intenção de uso.',
-    }));
+    const gains = ranked.filter(item => item.delta > 0);
+    if (!gains.length) return [];
+
+    gains.sort((a, b) => b.priority - a.priority || b.delta - a.delta);
+
+    const relevant = gains.filter(item => item.contextWeight >= 0.7);
+    const pool = relevant.length >= 3 ? relevant : gains;
+
+    const limit = Math.min(5, Math.max(3, Math.min(gains.length, 5)));
+    return pool.slice(0, limit);
+}
+
+function computeABDecisionConfidence(winnerData, loserData, snapshot, contextWeights) {
+    const weights = contextWeights || getContextWeightMap(winnerData);
+    const winnerIsA = snapshot.overallWinner === 'a';
+    const winnerIsB = snapshot.overallWinner === 'b';
+    if (!winnerIsA && !winnerIsB) {
+        return { value: 0, level: 'low', breakdown: { magnitude: 0, consistency: 0, backendConfidence: 0 } };
+    }
+
+    const deltaMagnitude = Math.abs(snapshot.overallDiff);
+    const magnitudeScore = Math.min(100, deltaMagnitude * 5);
+
+    let weightedWins = 0;
+    let weightedTotal = 0;
+    snapshot.rows.forEach(row => {
+        const w = weights[row.region.key] ?? 1.0;
+        weightedTotal += w;
+        const diffFavorsWinner = winnerIsA ? row.diff > 0 : row.diff < 0;
+        if (diffFavorsWinner) weightedWins += w;
+    });
+    const consistencyScore = weightedTotal > 0 ? (weightedWins / weightedTotal) * 100 : 0;
+
+    const winnerDataForConf = winnerIsA ? winnerData : loserData;
+    const winnerConfidences = REGIONS
+        .map((r, i) => getRegionConfidence(winnerDataForConf, r.key, i))
+        .map(c => (c && typeof c.value === 'number' ? c.value : null))
+        .filter(v => v != null);
+    const backendConfidenceScore = winnerConfidences.length
+        ? winnerConfidences.reduce((a, v) => a + v, 0) / winnerConfidences.length
+        : 50;
+
+    const value = Math.round(
+        clamp(0.4 * magnitudeScore + 0.4 * consistencyScore + 0.2 * backendConfidenceScore, 5, 98)
+    );
+    const level = value >= 70 ? 'high' : value >= 45 ? 'moderate' : 'low';
+
+    return {
+        value,
+        level,
+        breakdown: {
+            magnitude: Math.round(magnitudeScore),
+            consistency: Math.round(consistencyScore),
+            backendConfidence: Math.round(backendConfidenceScore),
+        },
+    };
+}
+
+function formatEvidenceSignalValue(value) {
+    if (value == null) return '—';
+    if (Math.abs(value) >= 10) return value.toFixed(0);
+    if (Math.abs(value) >= 1) return value.toFixed(2);
+    return value.toFixed(3);
+}
+
+function renderEvidenceSignals(signals, totalWeight) {
+    if (!signals || !signals.length) return '';
+    return signals
+        .map(signal => {
+            const valueText = formatEvidenceSignalValue(signal.value);
+            const weightShare = signal.weight != null && totalWeight > 0
+                ? Math.round((signal.weight / totalWeight) * 100)
+                : null;
+            const weightText = weightShare != null ? `${weightShare}%` : '—';
+            const directionClass = signal.direction ? ` direction-${signal.direction}` : '';
+            const directionGlyph = signal.direction === 'negative' ? '↓' : signal.direction === 'positive' ? '↑' : '•';
+            return `
+                <li class="evidence-signal${directionClass}">
+                    <span class="evidence-signal-dir" aria-hidden="true">${directionGlyph}</span>
+                    <span class="evidence-signal-name">${escapeHtml(signal.name)}</span>
+                    <span class="evidence-signal-value" title="Feature value">${escapeHtml(valueText)}</span>
+                    <span class="evidence-signal-weight" title="Contribuição relativa">${escapeHtml(weightText)}</span>
+                </li>
+            `;
+        })
+        .join('');
+}
+
+function renderEvidenceDetailsMarkup(evidenceDetails, detailsId) {
+    if (!evidenceDetails || !evidenceDetails.hasDetails) return '';
+    const { summary, primarySignals, supportingSignals } = evidenceDetails;
+    const allSignals = [...primarySignals, ...supportingSignals];
+    const totalWeight = allSignals.reduce((acc, s) => acc + (s.weight || 0), 0);
+    const summaryBlock = summary ? `<p class="evidence-summary">${escapeHtml(summary)}</p>` : '';
+    const primaryBlock = primarySignals.length ? `
+        <div class="evidence-section">
+            <span class="evidence-section-label">Primary signals</span>
+            <ul class="evidence-signal-list">${renderEvidenceSignals(primarySignals, totalWeight)}</ul>
+        </div>
+    ` : '';
+    const supportingBlock = supportingSignals.length ? `
+        <div class="evidence-section">
+            <span class="evidence-section-label">Supporting signals</span>
+            <ul class="evidence-signal-list">${renderEvidenceSignals(supportingSignals, totalWeight)}</ul>
+        </div>
+    ` : '';
+    return `
+        <button type="button" class="metric-evidence-toggle" aria-expanded="false" aria-controls="${detailsId}" data-evidence-toggle>
+            <span>Details</span>
+            <span class="metric-evidence-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div class="metric-evidence-details" id="${detailsId}" hidden>
+            ${summaryBlock}
+            ${primaryBlock}
+            ${supportingBlock}
+        </div>
+    `;
 }
 
 function buildMetricCardMarkup({
@@ -630,18 +824,23 @@ function buildMetricCardMarkup({
     color,
     confidence,
     evidence,
+    evidenceDetails,
+    detailsId,
     delta,
     deltaSideLabel,
     valueFontSize = null,
 }) {
     const confidenceText = getConfidenceBadgeText(confidence);
     const confidenceLevel = getConfidenceLevel(confidence);
-    const evidenceText = evidence ? toCompactText(evidence, 84) : 'Sem evidência extra';
-    const evidenceTitle = evidence ? evidence : 'Backend não enviou evidência por região';
+    const summaryFallback = evidenceDetails?.summary || null;
+    const evidenceCompact = evidence || (summaryFallback ? toCompactText(summaryFallback, 84) : null);
+    const evidenceText = evidenceCompact ? toCompactText(evidenceCompact, 84) : 'Sem evidência extra';
+    const evidenceTitle = evidenceCompact ? evidenceCompact : 'Backend não enviou evidência por região';
+    const hasEvidence = Boolean(evidenceCompact);
     const deltaMeta = delta != null ? getDeltaMeta(delta, deltaSideLabel || 'outra versão') : null;
     const deltaClass = deltaMeta ? ` ${deltaMeta.className}` : '';
     const valueStyle = valueFontSize ? ` style="font-size:${valueFontSize}px"` : '';
-    const hasEvidence = Boolean(evidence);
+    const detailsMarkup = detailsId ? renderEvidenceDetailsMarkup(evidenceDetails, detailsId) : '';
 
     return `
         <div class="metric-head">
@@ -667,6 +866,7 @@ function buildMetricCardMarkup({
         </div>
         <span class="metric-level ${level}">${escapeHtml(levelText)}</span>
         <div class="metric-bar"><div class="metric-bar-fill" style="width:${clamp(Number(value), 0, 100)}%;background:${color}"></div></div>
+        ${detailsMarkup}
     `;
 }
 
@@ -1049,9 +1249,11 @@ function displayResults(data) {
         const val = getScoreForRegion(scores, r.key, i);
         const confidence = getRegionConfidence(data, r.key, i);
         const evidence = getRegionEvidence(data, r.key, i);
+        const evidenceDetails = getRegionEvidenceDetails(data, r.key, i);
         const level = val >= 65 ? 'high' : val >= 40 ? 'medium' : 'low';
         const levelText = val >= 65 ? 'High' : val >= 40 ? 'Medium' : 'Low';
         const color = val >= 65 ? '#5CA9FF' : val >= 40 ? '#F4B23E' : '#6480AB';
+        const detailsId = `metric-evidence-details-${r.key}-${i}`;
 
         const card = document.createElement('div');
         card.className = `metric-card level-${level}`;
@@ -1065,8 +1267,24 @@ function displayResults(data) {
             color,
             confidence,
             evidence,
+            evidenceDetails,
+            detailsId,
         });
-        card.addEventListener('click', () => {
+        card.addEventListener('click', event => {
+            const toggle = event.target.closest('[data-evidence-toggle]');
+            if (toggle && card.contains(toggle)) {
+                event.stopPropagation();
+                const panel = card.querySelector(`#${CSS.escape(detailsId)}`);
+                if (!panel) return;
+                const isOpen = card.classList.toggle('evidence-open');
+                toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                if (isOpen) {
+                    panel.removeAttribute('hidden');
+                } else {
+                    panel.setAttribute('hidden', '');
+                }
+                return;
+            }
             document.querySelectorAll('.metric-card').forEach(c => c.classList.remove('active'));
             card.classList.add('active');
             isolateBrainRegion(brainScene, i);
@@ -1182,10 +1400,13 @@ function displayABComparison(a, b) {
     const winner = snapshot.overallWinner === 'a' ? 'A' : snapshot.overallWinner === 'b' ? 'B' : 'Empate';
     const diff = snapshot.overallDiff;
     const absDiff = Math.abs(diff);
-    const confidence = Math.round(clamp(Math.abs(avgA - avgB) * 4.2, 22, 95));
     const winnerData = winner === 'A' ? a : b;
     const loserData = winner === 'A' ? b : a;
-    const decisions = winner === 'Empate' ? [] : getABDecision(winnerData, loserData);
+    const contextWeights = getContextWeightMap(winnerData);
+    const confidence = winner === 'Empate'
+        ? { value: 0, level: 'low', breakdown: { magnitude: 0, consistency: 0, backendConfidence: 0 } }
+        : computeABDecisionConfidence(winnerData, loserData, snapshot, contextWeights);
+    const decisions = winner === 'Empate' ? [] : getABDecision(winnerData, loserData, contextWeights);
     const overallToneClass = winner === 'A' ? 'winner-a' : winner === 'B' ? 'winner-b' : 'neutral';
     const deltaClass = diff > 0 ? 'positive' : diff < 0 ? 'negative' : 'neutral';
     const deltaText = diff === 0 ? 'Δ 0.0' : `Δ ${diff > 0 ? '+' : '−'}${absDiff.toFixed(1)}`;
@@ -1195,6 +1416,17 @@ function displayABComparison(a, b) {
             : winner === 'B'
                 ? 'Version B shows stronger overall brain engagement for this context.'
                 : 'Both versions show similar overall brain engagement.';
+
+    const relativeGain = winner !== 'Empate' && Math.min(avgA, avgB) > 0
+        ? (absDiff / Math.min(avgA, avgB)) * 100
+        : null;
+    const gainSuffix = relativeGain != null && Number.isFinite(relativeGain)
+        ? ` (+${relativeGain.toFixed(relativeGain >= 10 ? 0 : 1)}%)`
+        : '';
+
+    const confidenceTitle = winner === 'Empate'
+        ? 'Sem vencedor definido'
+        : `Magnitude ${confidence.breakdown.magnitude} · Consistência ${confidence.breakdown.consistency} · Backend ${confidence.breakdown.backendConfidence}`;
 
     const decisionMarkup = winner === 'Empate'
         ? `
@@ -1207,20 +1439,49 @@ function displayABComparison(a, b) {
             <div class="ab-decision-card ${winner === 'A' ? 'winner-a' : 'winner-b'}">
                 <div class="ab-decision-head">
                     <h3>Decisão sugerida: versão ${winner}</h3>
-                    <span class="ab-decision-confidence">Confiança ${confidence}%</span>
+                    <span class="ab-decision-confidence level-${confidence.level}" title="${escapeHtml(confidenceTitle)}">
+                        <span class="ab-decision-confidence-label">Confiança</span>
+                        <span class="ab-decision-confidence-value">${confidence.value}%</span>
+                        <span class="ab-decision-confidence-level">${confidence.level === 'high' ? 'Alta' : confidence.level === 'moderate' ? 'Moderada' : 'Baixa'}</span>
+                    </span>
                 </div>
                 <p class="ab-decision-summary">
                     No contexto <strong>${contextLabel}</strong>, a versão ${winner} apresentou melhor score global
-                    (${Math.max(avgA, avgB).toFixed(0)}/100) com ganho de ${(Math.abs(avgA - avgB)).toFixed(1)} pontos.
+                    (${Math.max(avgA, avgB).toFixed(0)}/100) com ganho de ${absDiff.toFixed(1)} pontos${gainSuffix}.
                 </p>
                 <div class="ab-decision-actions">
-                    ${decisions.map(item => `
-                        <div class="ab-decision-action">
-                            <div class="ab-decision-action-title">${item.tag} · +${item.delta.toFixed(item.delta >= 10 ? 0 : 1)} pts</div>
-                            <p>${item.action}</p>
-                            <small>Evidência: ${escapeHtml(item.winnerEvidence || item.loserEvidence || 'sem evidência adicional')}</small>
-                        </div>
-                    `).join('')}
+                    ${decisions.map(item => {
+                        const deltaLabel = `+${item.delta.toFixed(item.delta >= 10 ? 0 : 1)} pts`;
+                        const relLabel = item.relativeGain != null && Number.isFinite(item.relativeGain)
+                            ? ` · +${item.relativeGain.toFixed(item.relativeGain >= 10 ? 0 : 1)}%`
+                            : '';
+                        const weightBadge = item.contextWeight >= 1.2
+                            ? `<span class="ab-decision-action-weight" title="Alta relevância neste contexto">crítica no contexto</span>`
+                            : item.contextWeight <= 0.7
+                                ? `<span class="ab-decision-action-weight muted" title="Baixa relevância neste contexto">secundária no contexto</span>`
+                                : '';
+                        let evidenceLine = '';
+                        if (item.pairedSignal) {
+                            const sig = item.pairedSignal;
+                            const wVal = formatEvidenceSignalValue(sig.winnerValue);
+                            const lVal = sig.loserValue != null ? formatEvidenceSignalValue(sig.loserValue) : '—';
+                            evidenceLine = `Sinal <code>${escapeHtml(sig.name)}</code>: vencedor ${escapeHtml(wVal)} vs perdedor ${escapeHtml(lVal)}`;
+                        } else if (item.winnerEvidenceSummary) {
+                            evidenceLine = escapeHtml(item.winnerEvidenceSummary);
+                        } else {
+                            evidenceLine = 'Sem evidência estruturada do backend.';
+                        }
+                        return `
+                            <div class="ab-decision-action">
+                                <div class="ab-decision-action-title">
+                                    <span>${escapeHtml(item.tag)} · ${deltaLabel}${relLabel}</span>
+                                    ${weightBadge}
+                                </div>
+                                <p>${escapeHtml(item.action)}</p>
+                                <small class="ab-decision-action-evidence">${evidenceLine}</small>
+                            </div>
+                        `;
+                    }).join('')}
                 </div>
             </div>
         `;
