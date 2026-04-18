@@ -1,0 +1,37 @@
+flowchart TD
+    Start([Usuário abre o dashboard]):::entry --> Ctx[Seleciona contexto<br/>banking, gaming, saas, content...]:::input
+    Ctx --> Upload[Faz upload do arquivo<br/>imagem ou vídeo]:::input
+    Upload --> Route{Backend pesado<br/>disponível via Gist?}:::decision
+
+    Route -->|Sim| Heavy[Pipeline pesado no Colab<br/>CLIP + IA textual Anthropic]:::heavy
+    Route -->|Não ou falhou| Lite[Backend Lite local<br/>NeuroScore v2 determinístico]:::lite
+
+    Heavy --> Features[Extração de features<br/>visual · áudio · texto]:::stage
+    Lite --> Features
+
+    Features --> Scoring[Score por 8 regiões do cérebro simulado<br/>V1 · FFA · PPA · V5 · IPS · Broca · PFC · Semantic]:::stage
+    Scoring --> Confidence[Confiança por região<br/>0 a 100%]:::stage
+    Confidence --> Evidence[Evidência estruturada<br/>sinais + peso + direção]:::stage
+    Evidence --> Ctxapply[Aplica pesos do contexto escolhido<br/>UX Score ponderado vs base]:::stage
+
+    Ctxapply --> Report[Relatório textual<br/>IA no pesado · template no Lite]:::stage
+    Report --> Render[Frontend renderiza resultado]:::output
+
+    Render --> Brain[Cérebro 3D Three.js<br/>regiões pulsam conforme score]:::output
+    Render --> Cards[Metric cards por região<br/>score + confiança + evidência expansível]:::output
+    Render --> Global[UX Score global<br/>base + ponderado pelo contexto]:::output
+    Render --> Text[Relatório escrito<br/>com diagnóstico e recomendações]:::output
+
+    Cards --> ABq{É comparação A/B?}:::decision
+    ABq -->|Não| End([Usuário lê resultado]):::entry
+    ABq -->|Sim| Decision[Decision card A/B<br/>vencedor + confiança composta<br/>+ 3 a 5 ações priorizadas por contexto<br/>com evidência estruturada]:::decision_card
+    Decision --> End
+
+    classDef entry fill:#1a2332,stroke:#4a90e2,stroke-width:2px,color:#fff
+    classDef input fill:#2c3e50,stroke:#3498db,stroke-width:1.5px,color:#fff
+    classDef decision fill:#44305e,stroke:#9b59b6,stroke-width:2px,color:#fff
+    classDef heavy fill:#2d4a3e,stroke:#27ae60,stroke-width:1.5px,color:#fff
+    classDef lite fill:#4a3d2d,stroke:#f39c12,stroke-width:1.5px,color:#fff
+    classDef stage fill:#1e2a3a,stroke:#5dade2,stroke-width:1px,color:#fff
+    classDef output fill:#2e1e3a,stroke:#af7ac5,stroke-width:1.5px,color:#fff
+    classDef decision_card fill:#5e2d3e,stroke:#e74c3c,stroke-width:2px,color:#fff
