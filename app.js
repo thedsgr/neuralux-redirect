@@ -47,11 +47,82 @@ const REGION_ACTIONS = {
 // STATE
 // ============================================
 let gradioUrl = null;
+let gradioReachable = false;
 let currentFile = null;
 let abFiles = { a: null, b: null };
 let abResults = { a: null, b: null };
 let brainScene = null;
 let abBrainScenes = { a: null, b: null };
+
+function isGradioReady() {
+    return Boolean(gradioUrl && gradioReachable);
+}
+
+function updateActionButtonsState() {
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    if (analyzeBtn) {
+        analyzeBtn.disabled = !(currentFile && isGradioReady());
+    }
+
+    const abCompareBtn = document.getElementById('abCompareBtn');
+    if (abCompareBtn) {
+        abCompareBtn.disabled = !(abFiles.a && abFiles.b && isGradioReady());
+    }
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const inheritedSignal = options.signal;
+
+    if (inheritedSignal) {
+        if (inheritedSignal.aborted) {
+            controller.abort(inheritedSignal.reason);
+        } else {
+            inheritedSignal.addEventListener('abort', () => controller.abort(inheritedSignal.reason), { once: true });
+        }
+    }
+
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+function buildNetworkErrorMessage(url, error) {
+    if (error?.name === 'AbortError') {
+        return `Tempo esgotado ao conectar com o servidor (${url}). Verifique se o link público do Colab ainda está ativo.`;
+    }
+
+    let mixedContentHint = '';
+    try {
+        const pageProtocol = window.location?.protocol;
+        const targetProtocol = new URL(url).protocol;
+        if (pageProtocol === 'https:' && targetProtocol === 'http:') {
+            mixedContentHint = ' A página está em HTTPS e o backend em HTTP (mixed content).';
+        }
+    } catch {}
+
+    return `Falha de rede ao acessar o servidor (${url}). Verifique se o Gradio está online, se a URL no Gist é válida e se o CORS está liberado.${mixedContentHint}`;
+}
+
+async function fetchOrThrowNetwork(url, options = {}, timeoutMs = 30000) {
+    try {
+        return await fetchWithTimeout(url, options, timeoutMs);
+    } catch (error) {
+        throw new Error(buildNetworkErrorMessage(url, error));
+    }
+}
+
+async function readResponseSnippet(response, maxLength = 280) {
+    try {
+        const body = await response.text();
+        return body ? body.slice(0, maxLength) : 'sem detalhes';
+    } catch {
+        return 'sem detalhes';
+    }
+}
 
 function getScoreForRegion(scores, regionKey, fallbackIndex = null) {
     if (scores && Object.prototype.hasOwnProperty.call(scores, regionKey)) {
@@ -943,33 +1014,48 @@ function initNavigation() {
 async function checkGradioStatus() {
     const dot = document.getElementById('statusDot');
     const txt = document.getElementById('statusText');
+    gradioReachable = false;
+    updateActionButtonsState();
     try {
-        const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, { cache: 'no-store' });
+        const res = await fetchWithTimeout(`https://api.github.com/gists/${GIST_ID}`, { cache: 'no-store' }, 8000);
+        if (!res.ok) {
+            throw new Error(`Falha ao carregar Gist (${res.status})`);
+        }
         const data = await res.json();
-        const content = JSON.parse(data.files['gradio_url.json'].content);
+        const gistContent = data?.files?.['gradio_url.json']?.content;
+        if (!gistContent) {
+            throw new Error('gradio_url.json não encontrado no Gist');
+        }
+        const content = JSON.parse(gistContent);
         if (content.url && !content.url.includes('placeholder')) {
             gradioUrl = content.url.replace(/\/$/, '');
             // Test if actually reachable
             try {
-                const test = await fetch(gradioUrl + '/config', { mode: 'cors', signal: AbortSignal.timeout(5000) });
+                const test = await fetchWithTimeout(gradioUrl + '/config', { mode: 'cors' }, 5000);
                 if (test.ok) {
+                    gradioReachable = true;
                     dot.className = 'status-dot online';
                     txt.textContent = 'Server online';
-                    document.getElementById('analyzeBtn').disabled = !currentFile;
+                    updateActionButtonsState();
                     return;
                 }
             } catch {}
-            dot.className = 'status-dot online';
-            txt.textContent = 'Server found';
-            document.getElementById('analyzeBtn').disabled = !currentFile;
+
+            gradioReachable = false;
+            dot.className = 'status-dot offline';
+            txt.textContent = 'Server unreachable';
         } else {
+            gradioUrl = null;
             dot.className = 'status-dot offline';
             txt.textContent = 'Server offline';
         }
     } catch {
+        gradioUrl = null;
+        gradioReachable = false;
         dot.className = 'status-dot offline';
         txt.textContent = 'Server offline';
     }
+    updateActionButtonsState();
 }
 
 // ============================================
@@ -1014,7 +1100,7 @@ function initUpload() {
         clearPreviewMedia();
         preview.style.display = 'none';
         zone.style.display = 'flex';
-        analyzeBtn.disabled = true;
+        updateActionButtonsState();
         resetAnalyzeState();
     });
 
@@ -1041,7 +1127,7 @@ function initUpload() {
         } else {
             previewImg.alt = file.name;
         }
-        analyzeBtn.disabled = !gradioUrl;
+        updateActionButtonsState();
     }
 }
 
@@ -1090,7 +1176,7 @@ function initABUpload() {
             clearABPreviewMedia(side);
             preview.style.display = 'none';
             zone.style.display = 'flex';
-            updateABButton();
+            updateActionButtonsState();
         });
     });
 
@@ -1119,11 +1205,7 @@ function initABUpload() {
             previewImg.style.display = 'none';
             previewVideo.play().catch(() => {});
         }
-        updateABButton();
-    }
-
-    function updateABButton() {
-        document.getElementById('abCompareBtn').disabled = !(abFiles.a && abFiles.b && gradioUrl);
+        updateActionButtonsState();
     }
 }
 
@@ -1134,25 +1216,32 @@ async function callGradioAPI(file, contextKey = 'generic') {
     // 1. Upload file
     const uploadData = new FormData();
     uploadData.append('files', file);
-    const uploadRes = await fetch(gradioUrl + '/gradio_api/upload', {
+    const uploadRes = await fetchOrThrowNetwork(gradioUrl + '/gradio_api/upload', {
         method: 'POST',
         body: uploadData,
-    });
+    }, 45000);
+    if (!uploadRes.ok) {
+        const body = await readResponseSnippet(uploadRes);
+        throw new Error(`Erro no upload para o backend (${uploadRes.status}): ${body}`);
+    }
     const uploadJson = await uploadRes.json();
-    const filePath = uploadJson[0];
+    const filePath = Array.isArray(uploadJson) ? uploadJson[0] : null;
+    if (!filePath) {
+        throw new Error('Upload concluído sem caminho de arquivo retornado pelo backend.');
+    }
 
     const filePayload = { path: filePath, orig_name: file.name, size: file.size, mime_type: file.type, meta: { _type: 'gradio.FileData' } };
     const normalizedContext = normalizeContextKey(contextKey);
 
     async function startCall(dataPayload) {
-        const callRes = await fetch(gradioUrl + '/gradio_api/call/analisar_json', {
+        const callRes = await fetchOrThrowNetwork(gradioUrl + '/gradio_api/call/analisar_json', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ data: dataPayload }),
-        });
+        }, 30000);
         if (!callRes.ok) {
-            const body = await callRes.text();
-            throw new Error(`Erro ao iniciar chamada da API (${callRes.status}): ${body.slice(0, 280)}`);
+            const body = await readResponseSnippet(callRes);
+            throw new Error(`Erro ao iniciar chamada da API (${callRes.status}): ${body}`);
         }
         const callJson = await callRes.json();
         if (!callJson?.event_id) {
@@ -1171,7 +1260,11 @@ async function callGradioAPI(file, contextKey = 'generic') {
     }
 
     // 3. Stream SSE result
-    const resultRes = await fetch(gradioUrl + '/gradio_api/call/analisar_json/' + event_id);
+    const resultRes = await fetchOrThrowNetwork(gradioUrl + '/gradio_api/call/analisar_json/' + event_id, {}, 90000);
+    if (!resultRes.ok) {
+        const body = await readResponseSnippet(resultRes);
+        throw new Error(`Erro ao consultar resultado da API (${resultRes.status}): ${body}`);
+    }
     const text = await resultRes.text();
 
     // Parse SSE: find "event: complete" followed by "data: [...]"
@@ -1214,7 +1307,7 @@ async function callGradioAPI(file, contextKey = 'generic') {
 // SINGLE ANALYSIS
 // ============================================
 async function runAnalysis() {
-    if (!currentFile || !gradioUrl) return;
+    if (!currentFile || !isGradioReady()) return;
     const contextKey = getSelectedContextKey();
     showLoading(`Analyzing brain activation patterns (${getContextLabel(contextKey)})...`);
     try {
@@ -1304,14 +1397,62 @@ function displayResults(data) {
         document.getElementById('reportCard').style.display = 'block';
         document.getElementById('reportMeta').textContent = `${elapsed.toFixed(1)}s inference · ${contextLabel}`;
         document.getElementById('reportContent').innerHTML = formatReport(report);
+        updateReportSourceBadge(data);
     }
+}
+
+function updateReportSourceBadge(data) {
+    const badge = document.getElementById('reportSource');
+    if (!badge) return;
+    const source = typeof data?.report_source === 'string' ? data.report_source : null;
+    if (!source) {
+        badge.hidden = true;
+        badge.removeAttribute('title');
+        badge.className = 'report-source-badge';
+        badge.textContent = '';
+        return;
+    }
+    const model = typeof data?.report_model === 'string' ? data.report_model : '';
+    const error = typeof data?.report_error === 'string' ? data.report_error : '';
+    badge.hidden = false;
+    badge.className = `report-source-badge source-${source}`;
+    badge.textContent = formatReportSource(source, model);
+    badge.title = formatReportSourceTitle(source, model, error);
+}
+
+function formatReportSource(source, model) {
+    if (source === 'cache') return 'cache';
+    if (source === 'fallback') return 'fallback';
+    if (source === 'anthropic') {
+        const short = shortenModelName(model);
+        return short ? `IA · ${short}` : 'IA';
+    }
+    return source;
+}
+
+function formatReportSourceTitle(source, model, error) {
+    if (source === 'cache') return 'Relatório servido do cache (mesma entrada, mesmo contexto).';
+    if (source === 'fallback') {
+        return error
+            ? `Fallback determinístico ativado. Motivo: ${error}`
+            : 'Fallback determinístico — a IA externa não respondeu.';
+    }
+    if (source === 'anthropic') {
+        return model ? `Gerado pela IA externa (${model}).` : 'Gerado pela IA externa.';
+    }
+    return '';
+}
+
+function shortenModelName(model) {
+    if (!model) return '';
+    return model.replace(/^claude-/, '').replace(/-\d{8}$/, '');
 }
 
 // ============================================
 // A/B ANALYSIS
 // ============================================
 async function runABAnalysis() {
-    if (!abFiles.a || !abFiles.b || !gradioUrl) return;
+    if (!abFiles.a || !abFiles.b || !isGradioReady()) return;
     const contextKey = getSelectedContextKey();
     showLoading(`Analyzing Version A (${getContextLabel(contextKey)})...`);
     try {
